@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
 
-    <title>igv.js unit tests</title>
+    <title>unit tests</title>
 
     <link rel="stylesheet" href="vendor/qunit.css" type="text/css"/>
     <script type="text/javascript" src="vendor/qunit.js"></script>
 
     <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
 
+    <!-- Underscore JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script>
+
     <!-- IGV JS -->
-    <script type="text/javascript" src="http://igv.org/web/beta/igv-beta.js"></script>
+    <script type="text/javascript" src="../examples/website/js/igv.js"></script>
 
     <!-- HiC JS -->
-
-    <script src="../site/js/site.js"></script>
-
-    <script src="../js/hicUtils.js"></script>
+    <script src="../js/genome.js"></script>
     <script src="../js/hicReader.js"></script>
     <script src="../js/hicColorScaleWidget.js"></script>
     <script src="../js/hicLocusGoto.js"></script>
@@ -31,9 +31,20 @@
     <script src="../js/hicState.js"></script>
     <script src="../js/hicDataset.js"></script>
     <script src="../js/normalizationVector.js"></script>
+    <script src="../js/normalizationWidget.js"></script>
+    <script src="../js/chromosomeSelectorWidget.js"></script>
+    <script src="../js/layoutController.js"></script>
+    <script src="../js/trackRenderer.js"></script>
+    <script src="../js/igvReplacements.js"></script>
+    <script src="../js/geneSearch.js"></script>
+    <script src="../js/track2D.js"></script>
 
-    <script src="testHiC.js"></script>
+    <script src="../vendor/colors.js"></script>
+    <script src="../vendor/zlib_and_gzip.js"></script>
+
     <script src="testColorScale.js"></script>
+    <script src="testTrack2D.js"></script>
+    <script src="testMath.js"></script>
 
 </head>
 <body>
@@ -41,8 +52,10 @@
 <div id="qunit-fixture"></div>
 <script type="text/javascript">
     document.addEventListener('DOMContentLoaded', function () {
+        runTrack2DTests();
         runColorTests();
-        runHiCTests();
+        runMathTests();
+        runStrawTests();
     });
 </script>
 </body>

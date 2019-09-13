@@ -1,343 +1,347 @@
 /**
  * Created by dat on 4/5/17.
  */
-var hic = (function (hic) {
+import $ from "../vendor/jquery-1.12.4.js";
+import _ from "../vendor/underscore.js";
+import  * as hic from './hic.js';
+import igv from '../node_modules/igv/dist/igv.esm.min.js';
 
-    hic.TrackRenderer = function (browser, size, $container, trackRenderPair, trackPair, axis) {
+const TrackRenderer = function (browser, size, $container, trackRenderPair, trackPair, axis, order) {
 
-        this.browser = browser;
+    this.browser = browser;
 
-        this.trackRenderPair = trackRenderPair;
+    this.trackRenderPair = trackRenderPair;
 
-        this.track = trackPair[ axis ];
+    this.track = trackPair[axis];
 
-        this.id = _.uniqueId('trackRenderer_');
-        this.axis = axis;
-        this.initializationHelper($container, size);
-    };
+    this.id = _.uniqueId('trackRenderer_');
+    this.axis = axis;
+    this.initializationHelper($container, size, order);
+};
 
-    hic.TrackRenderer.prototype.initializationHelper = function ($container, size) {
+TrackRenderer.prototype.initializationHelper = function ($container, size, order) {
 
-        var self = this,
-            str;
+    var self = this,
+        str,
+        doShowLabelAndGear,
+        $x_track_label;
 
-        // track canvas container
-        this.$viewport = ('x' === this.axis) ? $('<div class="x-track-canvas-container">') : $('<div class="y-track-canvas-container">');
-        if (size.width) {
-            this.$viewport.width(size.width);
-        }
-        if (size.height) {
-            this.$viewport.height(size.height);
-        }
-        $container.append(this.$viewport);
+    // track canvas container
+    this.$viewport = ('x' === this.axis) ? $('<div class="x-track-canvas-container">') : $('<div class="y-track-canvas-container">');
+    if (size.width) {
+        this.$viewport.width(size.width);
+    }
+    if (size.height) {
+        this.$viewport.height(size.height);
+    }
+    $container.append(this.$viewport);
+    this.$viewport.css({order: order});
 
-        // canvas
-        this.$canvas = $('<canvas>');
-        this.$viewport.append(this.$canvas);
-        this.ctx = this.$canvas.get(0).getContext("2d");
+    // canvas
+    this.$canvas = $('<canvas>');
+    this.$viewport.append(this.$canvas);
+    this.ctx = this.$canvas.get(0).getContext("2d");
 
-        if ('x' === this.axis) {
+    if ('x' === this.axis) {
 
-            // label presenter
-            this.$label_presenter = $('<div class="x-track-label-presenter">');
-            this.$viewport.append(this.$label_presenter);
+        // label
+        this.$label = $('<div class="x-track-label">');
+        str = this.track.name || 'untitled';
+        this.$label.text(str);
 
-            // label
-            this.$label = $('<div class="x-track-label">');
-            str = this.track.name || 'untitled';
-            this.$label.text(str);
-            this.$viewport.append(this.$label);
+        // note the pre-existing state of track labels/gear. hide/show accordingly.
+        $x_track_label = $container.find(this.$label);
+        doShowLabelAndGear = (0 === _.size($x_track_label)) ? true : $x_track_label.is(':visible');
 
-            this.$label_presenter.on('click', function (e) {
-                self.$label.show();
-                $(this).hide();
-            });
+        this.$viewport.append(this.$label);
+    }
 
-            this.$label.on('click', function (e) {
-                self.$label_presenter.show();
-                $(this).hide();
-            });
+    // track spinner container
+    this.$spinner = ('x' === this.axis) ? $('<div class="x-track-spinner">') : $('<div class="y-track-spinner">');
+    this.$viewport.append(this.$spinner);
 
-            this.$label_presenter.hide();
-            this.$label.show();
-        }
 
-        // track spinner container
-        this.$spinner = ('x' === this.axis) ? $('<div class="x-track-spinner">') : $('<div class="y-track-spinner">');
-        this.$viewport.append(this.$spinner);
+    this.stopSpinner();
 
-        // throbber
-        // size: see $hic-viewport-spinner-size in .scss files
-        this.throbber = Throbber({ color: 'rgb(64, 64, 64)', size: 32 , padding: 7 });
-        this.throbber.appendTo( this.$spinner.get(0) );
-        this.stopSpinner();
+    // color picker
+    if ('x' === this.axis) {
+        this.colorPicker = createColorPicker_ColorScaleWidget_version(this.$viewport, () => {
+            this.colorPicker.$container.hide();
+        }, (color) => {
+            this.setColor(color);
+        });
+        this.colorPicker.$container.hide();
+    }
 
-        if ('x' === this.axis) {
+    if ('x' === this.axis) {
 
-            this.$menu_container = $('<div class="x-track-menu-container">');
-            this.$viewport.append(this.$menu_container);
-
-            this.$menu_button = $('<i class="fa fa-cog" aria-hidden="true">');
-            this.$menu_container.append(this.$menu_button);
-
-            this.$menu_button.click(function (e) {
-                igv.popover.presentTrackGearMenu(e.pageX, e.pageY, self);
-            });
-
-        }
-
-        // compatibility with igv menus
+        // igvjs compatibility
         this.track.trackView = this;
         this.track.trackView.trackDiv = this.$viewport.get(0);
 
-        this.configTrackTransforms();
+        igv.appendRightHandGutter.call(this, this.$viewport);
 
-    };
-
-    hic.TrackRenderer.prototype.configTrackTransforms = function() {
-
-        this.canvasTransform = ('y' === this.axis) ? hic.reflectionRotationWithContext : hic.identityTransformWithContext;
-
-        this.labelReflectionTransform = ('y' === this.axis) ? hic.reflectionAboutYAxisAtOffsetWithContext : function (context, exe) { /* nuthin */ };
-
-    };
-
-    hic.TrackRenderer.prototype.syncCanvas = function () {
-
-        this.tile = null;
-
-        this.$canvas.width(this.$viewport.width());
-        this.$canvas.attr('width', this.$viewport.width());
-
-        this.$canvas.height(this.$viewport.height());
-        this.$canvas.attr('height', this.$viewport.height());
-
-        igv.graphics.fillRect(this.ctx, 0, 0, this.$canvas.width(), this.$canvas.height(), { fillStyle: igv.rgbColor(255, 255, 255) });
-    };
-
-    hic.TrackRenderer.prototype.setColor = function (color) {
-
-        _.each(this.trackRenderPair, function (trackRenderer) {
-            trackRenderer.tile = undefined;
-            trackRenderer.track.color = color;
+        this.$viewport.on('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $container.find('.x-track-label').toggle();
+            $container.find('.igv-right-hand-gutter').toggle();
         });
 
-        this.browser.renderTrackXY(this.trackRenderPair);
+    }
+
+    this.configTrackTransforms();
+
+};
+
+TrackRenderer.prototype.configTrackTransforms = function () {
+
+    this.canvasTransform = ('y' === this.axis) ? hic.reflectionRotationWithContext : hic.identityTransformWithContext;
+
+    this.labelReflectionTransform = ('y' === this.axis) ? hic.reflectionAboutYAxisAtOffsetWithContext : function (context, exe) { /* nuthin */
     };
 
-    hic.TrackRenderer.prototype.dataRange = function () {
-        return this.track.dataRange ? this.track.dataRange : undefined;
-    };
+};
 
-    hic.TrackRenderer.prototype.setDataRange = function (min, max, autoscale) {
+TrackRenderer.prototype.syncCanvas = function () {
 
-        _.each(this.trackRenderPair, function (trackRenderer) {
-            trackRenderer.tile = undefined;
-            trackRenderer.track.dataRange = { min: min, max: max };
-            trackRenderer.track.autscale = autoscale;
-        });
+    this.$canvas.width(this.$viewport.width());
+    this.$canvas.attr('width', this.$viewport.width());
 
-        this.browser.renderTrackXY(this.trackRenderPair);
+    this.$canvas.height(this.$viewport.height());
+    this.$canvas.attr('height', this.$viewport.height());
 
-    };
+};
 
-    hic.TrackRenderer.prototype.update = function () {
-        this.tile = null;
-        this.promiseToRepaint();
-    };
+TrackRenderer.prototype.presentColorPicker = function () {
+    const bbox = this.trackDiv.getBoundingClientRect();
+    this.colorPicker.origin = {x: bbox.x, y: 0};
+    this.colorPicker.$container.offset({left: this.colorPicker.origin.x, top: this.colorPicker.origin.y});
+    this.colorPicker.$container.show();
+};
 
-    hic.TrackRenderer.prototype.repaint = function () {
-        this.promiseToRepaint();
-    };
+TrackRenderer.prototype.setTrackName = function (name) {
 
-    hic.TrackRenderer.prototype.promiseToRepaint = function () {
+    if ('x' === this.axis) {
+        this.track.name = name;
+        this.$label.text(name);
+    }
+};
 
-        var self = this;
+TrackRenderer.prototype.setColor = function (color) {
 
-        return new Promise(function(fulfill, reject) {
+    setColor(this.trackRenderPair.x);
+    setColor(this.trackRenderPair.y);
 
-            var lengthPixel,
-                lengthBP,
-                startBP,
-                endBP,
-                genomicState,
-                chrName;
+    function setColor(trackRenderer) {
+        trackRenderer.tile = undefined;
+        trackRenderer.track.color = color;
+    }
 
-            genomicState = _.mapObject(self.browser.genomicState(), function(val) {
-                return _.isObject(val) ? val[ self.axis ] : val;
-            });
+    this.browser.renderTrackXY(this.trackRenderPair);
 
-            if (/*this.$zoomInNotice &&*/ self.track.visibilityWindow && self.track.visibilityWindow > 0) {
+};
 
-                if ((genomicState.bpp * Math.max(self.$canvas.width(), self.$canvas.height()) > self.track.visibilityWindow) /*|| ('all' === genomicState.chromosome.name && !self.track.supportsWholeGenome)*/) {
+TrackRenderer.prototype.setTrackHeight = function (height) {
+    // TODO fix me -- height should apply to both axes.  This method called by gear menu list item
+    console.error("setTrackHeight not implemented")
+};
 
-                    self.tile = undefined;
-                    self.ctx.clearRect(0, 0, self.$canvas.width(), self.$canvas.height());
+TrackRenderer.prototype.dataRange = function () {
+    return this.track.dataRange ? this.track.dataRange : undefined;
+};
 
-                    self.stopSpinner();
-                    // self.$zoomInNotice.show();
+TrackRenderer.prototype.setDataRange = function (min, max, autoscale) {
 
-                    fulfill(self.id + '.' + self.axis + ' zoom in to see features');
+    if (min !== undefined) {
+        this.track.dataRange.min = min;
+        this.track.config.min = min;
+    }
 
-                    // RETURN RETURN RETURN RETURN
-                    return;
+    if (max !== undefined) {
+        this.track.dataRange.max = max;
+        this.track.config.max = max;
+    }
 
-                } else {
-                    // self.$zoomInNotice.hide();
-                }
+    this.track.autoscale = autoscale;
+    this.track.config.autoScale = autoscale;
 
-            } // if (/*this.$zoomInNotice &&*/ self.track.visibilityWindow && self.track.visibilityWindow > 0)
+    this.repaint();
+};
 
-            chrName = genomicState.chromosome.name;
 
-            if (self.tile && self.tile.containsRange(chrName, genomicState.startBP, genomicState.endBP, genomicState.bpp)) {
-                self.drawTileWithGenomicState(self.tile, genomicState);
-                fulfill(self.id + '.' + self.axis + ' drawTileWithGenomicState(repaint)');
+/**
+ * Return a promise to get the renderer ready to paint,  that is with a valid tile, loading features
+ * and drawing tile if neccessary.
+ *
+ * @returns {*}
+ */
+TrackRenderer.prototype.readyToPaint = async function () {
+
+    var self = this,
+        lengthPixel, lengthBP, startBP, endBP;
+
+    const genomicState = self.browser.genomicState(self.axis);
+    const chrName = genomicState.chromosome.name;
+
+    const bpp = "all" === chrName.toLowerCase() ?
+        this.browser.genome.getGenomeLength() / Math.max(this.$canvas.height(), this.$canvas.width()) :
+        genomicState.bpp
+
+    if (self.tile && self.tile.containsRange(chrName, genomicState.startBP, genomicState.endBP, bpp)) {
+
+        return;
+
+    } else if (bpp * Math.max(self.$canvas.width(), self.$canvas.height()) > self.track.visibilityWindow) {
+
+        return;
+
+    } else {
+
+        // Expand the requested range so we can pan a bit without reloading
+        lengthPixel = 3 * Math.max(self.$canvas.width(), self.$canvas.height());
+        lengthBP = Math.round(bpp * lengthPixel);
+        startBP = Math.max(0, Math.round(genomicState.startBP - lengthBP / 3));
+        endBP = startBP + lengthBP;
+
+        const features = await self.track.getFeatures(genomicState.chromosome.name, startBP, endBP, bpp)
+
+
+        var buffer, ctx;
+        buffer = document.createElement('canvas');
+        buffer.width = 'x' === self.axis ? lengthPixel : self.$canvas.width();
+        buffer.height = 'x' === self.axis ? self.$canvas.height() : lengthPixel;
+        ctx = buffer.getContext("2d");
+        if (features) {
+
+            if (typeof self.track.doAutoscale === 'function') {
+                self.track.doAutoscale(features);
             } else {
-
-                // Expand the requested range so we can pan a bit without reloading
-                lengthPixel = 3 * Math.max(self.$canvas.width(), self.$canvas.height());
-                // lengthPixel = Math.max(self.$canvas.width(), self.$canvas.height());
-
-                lengthBP = Math.round(genomicState.bpp * lengthPixel);
-
-                startBP = Math.max(0, Math.round(genomicState.startBP - lengthBP/3));
-                // startBP = Math.round(genomicState.startBP);
-
-                endBP = startBP + lengthBP;
-
-                if (self.loading && self.loading.start === startBP && self.loading.end === endBP) {
-                    fulfill(self.id + '.' + self.axis + ' loading ...');
-                } else {
-
-                    self.loading =
-                        {
-                            start: startBP,
-                            end: endBP
-                        };
-
-                    self.startSpinner();
-                    // console.log(self.id + ' will get features');
-                    self.track
-                        .getFeatures(genomicState.chromosome.name, startBP, endBP, genomicState.bpp)
-                        .then(function (features) {
-
-                            var buffer,
-                                ctx;
-
-                            // console.log(self.id + '  did get features');
-                            self.loading = undefined;
-
-                            self.stopSpinner();
-
-                            if (features) {
-
-                                buffer = document.createElement('canvas');
-                                buffer.width  = 'x' === self.axis ? lengthPixel           : self.$canvas.width();
-                                buffer.height = 'x' === self.axis ? self.$canvas.height() : lengthPixel;
-                                ctx = buffer.getContext("2d");
-
-                                self.canvasTransform(ctx);
-
-                                self.drawConfiguration =
-                                    {
-                                        features: features,
-
-                                        context: ctx,
-
-                                        pixelWidth:  lengthPixel,
-                                        pixelHeight: Math.min(buffer.width, buffer.height),
-
-                                        bpStart: startBP,
-                                        bpEnd:   endBP,
-
-                                        bpPerPixel: genomicState.bpp,
-
-                                        genomicState: genomicState,
-
-                                        viewportContainerX: (genomicState.startBP - startBP) / genomicState.bpp,
-
-                                        viewportContainerWidth: Math.max(self.$canvas.width(), self.$canvas.height())
-                                    };
-
-                                self.startSpinner();
-
-                                // console.log(self.id + ' will draw');
-                                self.track.draw(self.drawConfiguration);
-                                self.tile = new Tile(chrName, startBP, endBP, genomicState.bpp, buffer);
-                                self.drawTileWithGenomicState(self.tile, genomicState);
-
-                                self.stopSpinner();
-                                // console.log(self.id + '  did draw');
-
-                                fulfill(self.id + '.' + self.axis + ' drawTileWithGenomicState(' + _.size(features) + ')');
-
-                            } else {
-                                self.ctx.clearRect(0, 0, self.$canvas.width(), self.$canvas.height());
-                                fulfill(self.id + '.' + self.axis + ' no features');
-                            }
-
-                        })
-                        .catch(function (error) {
-
-                            self.stopSpinner();
-
-                            self.loading = false;
-
-                            reject(error);
-                        });
-
-                }
+                self.track.dataRange = igv.doAutoscale(features);
             }
 
-        });
-    };
+            self.canvasTransform(ctx);
 
-    hic.TrackRenderer.prototype.drawTileWithGenomicState = function (tile, genomicState) {
+            self.drawConfiguration =
+                {
+                    features: features,
+                    context: ctx,
+                    pixelWidth: lengthPixel,
+                    pixelHeight: Math.min(buffer.width, buffer.height),
+                    bpStart: startBP,
+                    bpEnd: endBP,
+                    bpPerPixel: bpp,
+                    genomicState: genomicState,
+                    viewportContainerX: (genomicState.startBP - startBP) / bpp,
+                    viewportContainerWidth: Math.max(self.$canvas.width(), self.$canvas.height()),
+                    labelTransform: self.labelReflectionTransform
+                };
 
-        if (tile) {
+            self.track.draw(self.drawConfiguration);
 
-            this.ctx.clearRect(0, 0, this.$canvas.width(), this.$canvas.height());
 
-            this.offsetPixel = Math.round( (tile.startBP - genomicState.startBP) / genomicState.bpp );
-            if ('x' === this.axis) {
-                this.ctx.drawImage(tile.buffer, this.offsetPixel, 0);
-            } else {
-                this.ctx.drawImage(tile.buffer, 0, this.offsetPixel);
-            }
-
-            // this.ctx.save();
-            // this.ctx.restore();
+        } else {
+            ctx.clearRect(0, 0, self.$canvas.width(), self.$canvas.height());
         }
-    };
 
-    hic.TrackRenderer.prototype.startSpinner = function () {
-        this.$spinner.show();
-        this.throbber.start();
-    };
+        self.tile = new Tile(chrName, startBP, endBP, bpp, buffer);
 
-    hic.TrackRenderer.prototype.stopSpinner = function () {
-        // this.startSpinner();
-        this.throbber.stop();
-        this.$spinner.hide();
-    };
+        return self.tile
+    }
+}
 
-    hic.TrackRenderer.prototype.isLoading = function () {
-        return !(undefined === this.loading);
-    };
+/**
+ *
+ */
+TrackRenderer.prototype.repaint = async function () {
 
-    Tile = function (chr, startBP, endBP, bpp, buffer) {
-        this.chr = chr;
-        this.startBP = startBP;
-        this.endBP = endBP;
-        this.bpp = bpp;
-        this.buffer = buffer;
-    };
+    const genomicState = this.browser.genomicState(this.axis);
+    if (!this.checkZoomIn()) {
+        this.tile = undefined;
+        this.ctx.clearRect(0, 0, this.$canvas.width(), this.$canvas.height());
+    }
 
-    Tile.prototype.containsRange = function (chr, startBP, endBP, bpp) {
-        return this.bpp === bpp && startBP >= this.startBP && endBP <= this.endBP && chr === this.chr;
-    };
+    const chrName = genomicState.chromosome.name;
+    const bpp = "all" === chrName.toLowerCase() ?
+        this.browser.genome.getGenomeLength() / Math.max(this.$canvas.height(), this.$canvas.width()) :
+        genomicState.bpp
 
-    return hic;
+    if (!(this.tile && this.tile.containsRange(chrName, genomicState.startBP, genomicState.endBP, bpp))) {
+        await this.readyToPaint()
+    }
+    this.drawTileWithGenomicState(this.tile, genomicState);
+};
 
-}) (hic || {});
+TrackRenderer.prototype.checkZoomIn = function () {
+
+    if (this.track.visibilityWindow && this.track.visibilityWindow > 0) {
+
+        if ((genomicState.bpp * Math.max(this.$canvas.width(), this.$canvas.height()) > this.track.visibilityWindow)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+TrackRenderer.prototype.drawTileWithGenomicState = function (tile, genomicState) {
+
+    if (tile) {
+
+        this.ctx.clearRect(0, 0, this.$canvas.width(), this.$canvas.height());
+
+        this.offsetPixel = Math.round((tile.startBP - genomicState.startBP) / genomicState.bpp);
+        if ('x' === this.axis) {
+            this.ctx.drawImage(tile.buffer, this.offsetPixel, 0);
+        } else {
+            this.ctx.drawImage(tile.buffer, 0, this.offsetPixel);
+        }
+
+        // this.ctx.save();
+        // this.ctx.restore();
+    }
+};
+
+TrackRenderer.prototype.startSpinner = function () {
+    this.browser.startSpinner();
+};
+
+TrackRenderer.prototype.stopSpinner = function () {
+    this.browser.stopSpinner();
+};
+
+TrackRenderer.prototype.isLoading = function () {
+    return !(undefined === this.loading);
+};
+
+// ColorScaleWidget version of color picker
+function createColorPicker_ColorScaleWidget_version($parent, closeHandler, colorHandler) {
+
+    const config =
+        {
+            $parent: $parent,
+            width: 456,
+            height: undefined,
+            closeHandler: closeHandler
+        };
+
+    let genericContainer = new igv.GenericContainer(config);
+
+    igv.createColorSwatchSelector(genericContainer.$container, colorHandler);
+
+    return genericContainer;
+}
+
+
+const Tile = function (chr, startBP, endBP, bpp, buffer) {
+    this.chr = chr;
+    this.startBP = startBP;
+    this.endBP = endBP;
+    this.bpp = bpp;
+    this.buffer = buffer;
+};
+
+Tile.prototype.containsRange = function (chr, startBP, endBP, bpp) {
+    return chr === this.chr && this.bpp === bpp && this.startBP <= startBP && this.endBP >= endBP;
+};
+
+export default TrackRenderer

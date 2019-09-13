@@ -24,70 +24,132 @@
 /**
  * Created by dat on 3/21/17.
  */
-var hic = (function (hic) {
+import $ from "../vendor/jquery-1.12.4.js"
 
-    var labels = {
-        VC: "Coverage",
-        VC_SQRT: "Coverage (Sqrt)",
-        KR: "Balanced",
-        INTER_VC: "Interchromosomal Coverage",
-        INTER_VC_SQRT: "Interchromosomal Coverage (Sqrt)",
-        INTER_KR: "Interchromosomal Balanced",
-        GW_VC: "Genome-wide Coverage",
-        GW_VC_SQRT: "Genome-wide Coverage (Sqrt)",
-        GW_KR: "Genome-wide Balanced"
-
+var labels =
+    {
+        NONE: 'None',
+        VC: 'Coverage',
+        VC_SQRT: 'Coverage - Sqrt',
+        KR: 'Balanced',
+        INTER_VC: 'Interchromosomal Coverage',
+        INTER_VC_SQRT: 'Interchromosomal Coverage - Sqrt',
+        INTER_KR: 'Interchromosomal Balanced',
+        GW_VC: 'Genome-wide Coverage',
+        GW_VC_SQRT: 'Genome-wide Coverage - Sqrt',
+        GW_KR: 'Genome-wide Balanced'
     };
 
-    hic.NormalizationWidget = function (browser) {
-        var self = this,
-            $label,
-            $option,
-            config;
+const NormalizationWidget = function (browser, $parent) {
+    var self = this,
+        $label;
 
-        this.browser = browser;
+    this.browser = browser;
 
-        $label = $('<div>');
-        $label.text('Normalization');
+    // container
+    this.$container = $("<div>", {class: 'hic-normalization-selector-container', title: 'Normalization'});
+    $parent.append(this.$container);
 
-        this.$normalization_selector = $('<select name="select">');
-        this.$normalization_selector.attr('name', 'dataset_selector');
-        this.$normalization_selector.on('change', function (e) {
-            self.browser.setNormalization($(this).val());
-        });
+    // label
+    $label = $('<div>');
+    $label.text('Norm');
+    this.$container.append($label);
+    // $label.hide();
 
-        this.$container = $('<div class="hic-normalization-selector-container">');
-        this.$container.append($label);
-        this.$container.append(this.$normalization_selector);
+    // select
+    this.$normalization_selector = $('<select name="select">');
+    this.$normalization_selector.attr('name', 'normalization_selector');
+    this.$normalization_selector.on('change', function (e) {
+        self.browser.setNormalization($(this).val());
+    });
+    this.$container.append(this.$normalization_selector);
 
-        hic.GlobalEventBus.subscribe("DataLoad", this);
+    // spinner
+    this.$spinner = $('<div>');
+    this.$spinner.text('Loading ...');
+    this.$container.append(this.$spinner);
+    this.$spinner.hide();
 
-    };
+    this.browser.eventBus.subscribe("MapLoad", this);
+    this.browser.eventBus.subscribe("NormVectorIndexLoad", this);
+    this.browser.eventBus.subscribe("NormalizationFileLoad", this);
+    this.browser.eventBus.subscribe("NormalizationExternalChange", this);
 
-    hic.NormalizationWidget.prototype.receiveEvent = function (event) {
+};
 
-        if (event.type === "DataLoad") {
+NormalizationWidget.prototype.startNotReady = function () {
+    this.$normalization_selector.hide();
+    this.$spinner.show();
+};
 
-            var dataset = event.data,
-                normalizationTypes,
-                elements,
-                norm = this.browser.state.normalization;
+NormalizationWidget.prototype.stopNotReady = function () {
+    this.$spinner.hide();
+    this.$normalization_selector.show();
+};
 
-            normalizationTypes = dataset.normalizationTypes;
-            elements = _.map(normalizationTypes, function (normalization) {
-                var label = labels[normalization],
-                    selected = (norm === normalization);
-                return '<option' +
-                    (label === undefined ? '' : ' title = "' + label + '" ') +
-                    ' value=' + normalization + (selected ? ' selected' : '') + '>' + normalization + '</option>';
+NormalizationWidget.prototype.receiveEvent = function (event) {
+
+    // TODO -- this is quite fragile.  If the NormVectorIndexLoad event is received before MapLoad you'll never see the pulldown widget
+    // if ("MapLoad" === event.type) {
+    //     // TODO -- start norm widget "not ready" state
+    //     this.startNotReady();
+    //
+    //     updateOptions.call(this);
+    //
+    // } else
+    if ("NormVectorIndexLoad" === event.type) {
+
+        updateOptions.call(this);
+
+        // TODO -- end norm widget "not ready" state
+        this.stopNotReady();
+
+    } else if ("NormalizationFileLoad" === event.type) {
+        if (event.data === "start") {
+            this.startNotReady();
+        } else {
+            this.stopNotReady();
+        }
+    } else if ("NormalizationExternalChange" === event.type) {
+
+        var filter = this.$normalization_selector
+            .find('option')
+            .filter(function (index) {
+                var s1 = this.value;
+                var s2 = event.data;
+                return s1 === s2;
+            })
+            .prop('selected', true);
+    }
+
+    async function updateOptions() {
+        var dataset = event.data,
+            normalizationTypes,
+            elements,
+            norm = this.browser.state.normalization;
+
+        normalizationTypes = await dataset.getNormalizationOptions();
+        if (normalizationTypes) {
+            elements = normalizationTypes.map(function (normalization) {
+                var label,
+                    labelPresentation,
+                    isSelected,
+                    titleString,
+                    valueString;
+
+                label = labels[normalization] || normalization;
+                isSelected = (norm === normalization);
+                titleString = (label === undefined ? '' : ' title = "' + label + '" ');
+                valueString = ' value=' + normalization + (isSelected ? ' selected' : '');
+
+                labelPresentation = '&nbsp &nbsp' + label + '&nbsp &nbsp';
+                return '<option' + titleString + valueString + '>' + labelPresentation + '</option>';
             });
 
             this.$normalization_selector.empty();
             this.$normalization_selector.append(elements.join(''));
         }
-    };
+    }
+};
 
-    return hic;
-
-})
-(hic || {});
+export default NormalizationWidget

@@ -1,5 +1,6 @@
 # Created by .gitignore support plugin (hsz.mobi)
 .DS_STORE
+.sass-cache
 .idea/workspace.xml
 node_modules
 dist
@@ -13,3 +14,6 @@ local
 /.idea/misc.xml
 
 /.idea
+/hic-viz.iml
+*.js.iml
+igv.js

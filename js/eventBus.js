@@ -4,21 +4,26 @@
  * Copyright (c) 2016-2017 The Regents of the University of California
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
- * associated documentation files (the "Software"), to deal in the Software without restriction, including 
- * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
- * copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the 
+ * associated documentation files (the "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
  * following conditions:
  *
- * The above copyright notice and this permission notice shall be included in all copies or substantial 
+ * The above copyright notice and this permission notice shall be included in all copies or substantial
  * portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING 
- * BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  FITNESS FOR A PARTICULAR PURPOSE AND 
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY 
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
- * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,  FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *
+ */
+
+
+/**
+ * @author Jim Robinson
  */
 
 
@@ -26,53 +31,60 @@
  * Barebones event bus.
  */
 
-var hic = (function (hic) {
+const EventBus = function () {
 
 
-    hic.EventBus = function () {
+    // Map eventType -> list of subscribers
+    this.subscribers = {};
 
-        // Map eventType -> list of subscribers
-        this.subscribers = {};
-    };
+    this.stack = []
+};
 
-    hic.EventBus.prototype.subscribe = function (eventType, object) {
+EventBus.prototype.subscribe = function (eventType, object) {
 
-        var subscriberList = this.subscribers[eventType];
-        if (subscriberList == undefined) {
-            subscriberList = [];
-            this.subscribers[eventType] = subscriberList;
-        }
-        subscriberList.push(object);
+    var subscriberList = this.subscribers[eventType];
+    if (subscriberList == undefined) {
+        subscriberList = [];
+        this.subscribers[eventType] = subscriberList;
+    }
+    subscriberList.push(object);
 
-    };
+};
 
-    hic.EventBus.prototype.post = function (event) {
+EventBus.prototype.post = function (event) {
 
-        var eventType = event.type,
-            subscriberList = this.subscribers[eventType];
+    const eventType = event.type
 
-        if(subscriberList) {
-            subscriberList.forEach(function (subscriber) {
+    if (this.hold) {
+        this.stack.push(event)
+    }
+    else {
+        const subscriberList = this.subscribers[eventType];
+
+        if (subscriberList) {
+            for (let subscriber of subscriberList) {
 
                 if ("function" === typeof subscriber.receiveEvent) {
                     subscriber.receiveEvent(event);
+                } else if ("function" === typeof subscriber) {
+                    subscriber(event);
                 }
-            });
+            }
         }
+    }
+}
 
-    };
+EventBus.prototype.hold = function () {
+    this.hold = true;
 
-    hic.Event = function(type, data) {
-        return {
-            type: type,
-            data: data
-        }
-    };
+}
 
-    hic.GlobalEventBus = new hic.EventBus();
+EventBus.prototype.release = function () {
+    this.hold = false;
+    for (let event of this.stack) {
+        this.post(event)
+    }
+    this.stack = []
+}
 
-
-    return hic;
-
-})
-(hic || {});
+export default EventBus
